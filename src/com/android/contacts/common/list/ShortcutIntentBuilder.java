@@ -43,6 +43,8 @@ import android.text.TextUtils.TruncateAt;
 import com.android.contacts.common.CallUtil;
 import com.android.contacts.common.R;
 
+import android.os.SystemProperties;
+
 /**
  * Constructs shortcut intents.
  */
@@ -291,15 +293,28 @@ public class ShortcutIntentBuilder {
         Bitmap bitmap = getPhotoBitmap(bitmapData);
 
         Uri phoneUri;
-        if (Intent.ACTION_CALL.equals(shortcutAction)) {
-            // Make the URI a direct tel: URI so that it will always continue to work
-            phoneUri = Uri.fromParts(CallUtil.SCHEME_TEL, phoneNumber, null);
-            bitmap = generatePhoneNumberIcon(bitmap, phoneType, phoneLabel,
-                    R.drawable.badge_action_call);
-        } else {
-            phoneUri = Uri.fromParts(CallUtil.SCHEME_SMSTO, phoneNumber, null);
-            bitmap = generatePhoneNumberIcon(bitmap, phoneType, phoneLabel,
-                    R.drawable.badge_action_sms);
+        if(SystemProperties.getInt("ro.dual.sim.phone", 0) == 1) {
+            if (Intent.ACTION_DIAL.equals(shortcutAction)) { // change ACTION_CALL to ACTION_DIAL for dual sim
+                // Make the URI a direct tel: URI so that it will always continue to work
+                phoneUri = Uri.fromParts(CallUtil.SCHEME_TEL, phoneNumber, null);
+                bitmap = generatePhoneNumberIcon(bitmap, phoneType, phoneLabel,
+                        R.drawable.badge_action_call);
+            } else {
+                phoneUri = Uri.fromParts(CallUtil.SCHEME_SMSTO, phoneNumber, null);
+                bitmap = generatePhoneNumberIcon(bitmap, phoneType, phoneLabel,
+                        R.drawable.badge_action_sms);
+            }
+        }else {
+            if (Intent.ACTION_CALL.equals(shortcutAction)) {
+                // Make the URI a direct tel: URI so that it will always continue to work
+                phoneUri = Uri.fromParts(CallUtil.SCHEME_TEL, phoneNumber, null);
+                bitmap = generatePhoneNumberIcon(bitmap, phoneType, phoneLabel,
+                        R.drawable.badge_action_call);
+            } else {
+                phoneUri = Uri.fromParts(CallUtil.SCHEME_SMSTO, phoneNumber, null);
+                bitmap = generatePhoneNumberIcon(bitmap, phoneType, phoneLabel,
+                        R.drawable.badge_action_sms);
+            }
         }
 
         Intent shortcutIntent = new Intent(shortcutAction, phoneUri);

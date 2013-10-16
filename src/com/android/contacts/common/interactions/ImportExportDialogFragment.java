@@ -48,6 +48,13 @@ import com.android.contacts.common.vcard.VCardCommonArguments;
 
 import java.util.List;
 
+import com.android.contacts.common.AdnContactActionScreen;
+import com.android.contacts.common.BrcmIccUtils;
+import com.android.contacts.common.SimContactsReadyHelper;
+import com.android.internal.telephony.RILConstants.SimCardID;
+import android.os.SystemProperties;
+import java.util.ArrayList;
+
 /**
  * An dialog invoked to import/export contacts.
  */
@@ -97,10 +104,26 @@ public class ImportExportDialogFragment extends DialogFragment
             }
         };
 
-        if (TelephonyManager.getDefault().hasIccCard()
-                && res.getBoolean(R.bool.config_allow_sim_import)) {
-            adapter.add(R.string.import_from_sim);
+        SimContactsReadyHelper simReadyHelper;
+        simReadyHelper = new SimContactsReadyHelper(null, false);
+
+        if (TelephonyManager.getDefault(SimCardID.ID_ZERO).hasIccCard()
+                && res.getBoolean(R.bool.config_allow_sim_import) && simReadyHelper.getSimContactsLoaded(SimCardID.ID_ZERO.toInt())) {
+            if(SystemProperties.getInt("ro.dual.sim.phone", 0) == 1) {
+                adapter.add(R.string.import_from_sim1);
+                adapter.add(R.string.export_to_sim1);
+            }else {
+                adapter.add(R.string.import_from_sim);
+                adapter.add(R.string.export_to_sim);
+            }
         }
+
+        if ((SystemProperties.getInt("ro.dual.sim.phone", 0) == 1) && TelephonyManager.getDefault(SimCardID.ID_ONE).hasIccCard()
+                && res.getBoolean(R.bool.config_allow_sim_import) && simReadyHelper.getSimContactsLoaded(SimCardID.ID_ONE.toInt())) {
+            adapter.add(R.string.import_from_sim2);
+            adapter.add(R.string.export_to_sim2);
+        }
+
         if (res.getBoolean(R.bool.config_allow_import_from_sdcard)) {
             adapter.add(R.string.import_from_sdcard);
         }
@@ -123,6 +146,8 @@ public class ImportExportDialogFragment extends DialogFragment
                 final int resId = adapter.getItem(which);
                 switch (resId) {
                     case R.string.import_from_sim:
+                    case R.string.import_from_sim1:
+                    case R.string.import_from_sim2:
                     case R.string.import_from_sdcard: {
                         dismissDialog = handleImportRequest(resId);
                         break;
@@ -138,6 +163,37 @@ public class ImportExportDialogFragment extends DialogFragment
                     case R.string.share_visible_contacts: {
                         dismissDialog = true;
                         doShareVisibleContacts();
+                        break;
+                    }
+                    case R.string.export_to_sim:
+                    case R.string.export_to_sim1: {
+                        dismissDialog = true;
+                        if(!AdnContactActionScreen.isExportingToSIM()) {
+                            if(!BrcmIccUtils.HaveFreeADNSpace(getActivity(),SimCardID.ID_ZERO.toInt())) {
+                                Toast.makeText(getActivity(), R.string.adnNoSimSpace,
+                                                Toast.LENGTH_LONG).show();
+                                break;
+                            }
+                            doExportToSim(SimCardID.ID_ZERO);
+                        }else {
+                                Toast.makeText(getActivity(), R.string.exportingProcessIsRunning,
+                                                Toast.LENGTH_LONG).show();
+                        }
+                        break;
+                    }
+                    case R.string.export_to_sim2: {
+                        dismissDialog = true;
+                        if(!AdnContactActionScreen.isExportingToSIM()) {
+                            if(!BrcmIccUtils.HaveFreeADNSpace(getActivity(),SimCardID.ID_ONE.toInt())) {
+                                Toast.makeText(getActivity(), R.string.adnNoSimSpace,
+                                                Toast.LENGTH_LONG).show();
+                                break;
+                            }
+                            doExportToSim(SimCardID.ID_ONE);
+                        }else {
+                                Toast.makeText(getActivity(), R.string.exportingProcessIsRunning,
+                                                Toast.LENGTH_LONG).show();
+                        }
                         break;
                     }
                     default: {
@@ -203,7 +259,15 @@ public class ImportExportDialogFragment extends DialogFragment
         // - just one account -> use the account without asking the user
         // - no account -> use phone-local storage without asking the user
         final AccountTypeManager accountTypes = AccountTypeManager.getInstance(getActivity());
-        final List<AccountWithDataSet> accountList = accountTypes.getAccounts(true);
+        final List<AccountWithDataSet> accountList = new ArrayList<AccountWithDataSet>(accountTypes.getAccounts(true));
+        Log.d(TAG, "handleImportRequest(): size before remove SIM accounts = " + accountList.size());
+        accountList.remove(new AccountWithDataSet(
+                BrcmIccUtils.ACCOUNT_NAME_SIM1, BrcmIccUtils.ACCOUNT_TYPE_SIM, BrcmIccUtils.ACCOUNT_NAME_SIM1));
+        if(SystemProperties.getInt("ro.dual.sim.phone", 0) == 1) {
+            accountList.remove(new AccountWithDataSet(
+                    BrcmIccUtils.ACCOUNT_NAME_SIM2, BrcmIccUtils.ACCOUNT_TYPE_SIM, BrcmIccUtils.ACCOUNT_NAME_SIM2));
+            Log.d(TAG, "handleImportRequest(): size after remove SIM accounts = " + accountList.size());
+         }
         final int size = accountList.size();
         if (size > 1) {
             // Send over to the account selector
@@ -212,7 +276,8 @@ public class ImportExportDialogFragment extends DialogFragment
             SelectAccountDialogFragment.show(
                     getFragmentManager(), this,
                     R.string.dialog_new_contact_account,
-                    AccountListFilter.ACCOUNTS_CONTACT_WRITABLE, args);
+                    AccountListFilter.ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM,
+                    args);
 
             // In this case, because this DialogFragment is used as a target fragment to
             // SelectAccountDialogFragment, we can't close it yet.  We close the dialog when
@@ -223,6 +288,22 @@ public class ImportExportDialogFragment extends DialogFragment
         AccountSelectionUtil.doImport(getActivity(), resId,
                 (size == 1 ? accountList.get(0) : null));
         return true; // Close the dialog.
+    }
+
+    /**
+     * Handle "Export To SIM"
+     */
+    private void doExportToSim(SimCardID simId) {
+        Intent exportIntent = new Intent(Intent.ACTION_PICK);
+
+        boolean phonebookOnly = true;
+        exportIntent.setType(Contacts.CONTENT_TYPE);
+        exportIntent.putExtra(BrcmIccUtils.PHONEBOOK_CONTACTS_ONLY, phonebookOnly);
+        exportIntent.putExtra(BrcmIccUtils.EXPORT_To_SIM, true);
+        exportIntent.putExtra(BrcmIccUtils.INTENT_EXTRA_SIM_ID, simId);
+        Log.d(TAG, "doExportToSim(): putExtra PHONEBOOK_CONTACTS_ONLY true");
+
+        startActivity(exportIntent);
     }
 
     /**

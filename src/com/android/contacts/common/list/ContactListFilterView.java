@@ -126,6 +126,10 @@ public class ContactListFilterView extends LinearLayout {
                 mAccountType.setText(accountType.getDisplayLabel(getContext()));
                 break;
             }
+            case ContactListFilter.FILTER_TYPE_NOT_SIM_CONTACTS: {
+                bindView(0, R.string.list_filter_not_sim_contacts);
+                break;
+            }
         }
     }
 

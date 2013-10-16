@@ -34,6 +34,8 @@ import com.android.contacts.common.preference.ContactsPreferences;
 
 import java.util.ArrayList;
 import java.util.List;
+import android.provider.ContactsContract.RawContacts;
+import com.android.contacts.common.BrcmIccUtils;
 
 /**
  * A cursor adapter for the {@link ContactsContract.Contacts#CONTENT_TYPE} content type.
@@ -175,6 +177,18 @@ public class DefaultContactListAdapter extends ContactListAdapter {
             case ContactListFilter.FILTER_TYPE_ACCOUNT: {
                 // We use query parameters for account filter, so no selection to add here.
                 break;
+            }
+            case ContactListFilter.FILTER_TYPE_NOT_SIM_CONTACTS: {
+                selection.append(
+                        Contacts._ID + " IN ("
+                                + "SELECT DISTINCT " + RawContacts.CONTACT_ID
+                                + " FROM accounts JOIN raw_contacts on (accounts._id=raw_contacts.account_id)"
+                                + " WHERE  account_type IS NULL");
+                selection.append(" OR  account_type <>?");
+                selectionArgs.add(BrcmIccUtils.ACCOUNT_TYPE_SIM);
+                selection.append(")");
+
+               break;
             }
         }
         loader.setSelection(selection.toString());

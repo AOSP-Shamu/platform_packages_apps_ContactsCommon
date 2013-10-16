@@ -42,6 +42,9 @@ import com.android.contacts.common.util.Constants;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.android.contacts.common.BrcmIccUtils;
+import android.provider.ContactsContract.RawContacts;
+
 /**
  * A cursor adapter for the {@link Phone#CONTENT_ITEM_TYPE} and
  * {@link SipAddress#CONTENT_ITEM_TYPE}.
@@ -229,6 +232,19 @@ public class PhoneNumberListAdapter extends ContactEntryListAdapter {
                 break; // No selection needed.
             case ContactListFilter.FILTER_TYPE_WITH_PHONE_NUMBERS_ONLY:
                 break; // This adapter is always "phone only", so no selection needed either.
+            case ContactListFilter.FILTER_TYPE_SIM_CONTACTS:
+                selection.append(
+                        Contacts._ID + " IN ("
+                                + "SELECT DISTINCT " + RawContacts.CONTACT_ID
+                                + " FROM accounts JOIN raw_contacts on (accounts._id=raw_contacts.account_id)"
+                                + " WHERE  account_type IS NULL");
+                selection.append(" OR  account_type =?");
+                selectionArgs.add(BrcmIccUtils.ACCOUNT_TYPE_SIM);
+                selection.append(")");
+                break;
+            case ContactListFilter.FILTER_TYPE_NOT_SIM_CONTACTS:
+                Log.e(TAG, "configureSelection(): filterType = ContactListFilter.FILTER_TYPE_NOT_SIM_CONTACT");
+                break;
             default:
                 Log.w(TAG, "Unsupported filter type came " +
                         "(type: " + filter.filterType + ", toString: " + filter + ")" +

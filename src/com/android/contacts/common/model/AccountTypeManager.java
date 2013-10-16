@@ -70,12 +70,20 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import android.os.SystemProperties;
+import com.android.contacts.common.BrcmIccUtils;
+import com.android.contacts.common.SimContactsReadyHelper;
+import com.android.internal.telephony.RILConstants.SimCardID;
+import com.android.contacts.common.model.account.LocalAccountType;
+import com.android.contacts.common.model.account.SimAccountType;
+
 /**
  * Singleton holder for all parsed {@link AccountType} available on the
  * system, typically filled through {@link PackageManager} queries.
  */
 public abstract class AccountTypeManager {
     static final String TAG = "AccountTypeManager";
+    static final boolean DBG = false;
 
     private static final Object mInitializationLock = new Object();
     private static AccountTypeManager mAccountTypeManager;
@@ -283,11 +291,14 @@ class AccountTypeManagerImpl extends AccountTypeManager
         }
     };
 
+    private SimContactsReadyHelper mSimReadyHelper;
+
     /**
      * Internal constructor that only performs initial parsing.
      */
     public AccountTypeManagerImpl(Context context) {
         mContext = context;
+        mSimReadyHelper = new SimContactsReadyHelper(mContext, true);
         mFallbackAccountType = new FallbackAccountType(context);
 
         mAccountManager = AccountManager.get(mContext);
@@ -372,6 +383,7 @@ class AccountTypeManagerImpl extends AccountTypeManager
      * called on a background thread.
      */
     protected void loadAccountsInBackground() {
+        if (DBG) Log.d(TAG, "=>loadAccountsInBackground()");
         if (Log.isLoggable(Constants.PERFORMANCE_TAG, Log.DEBUG)) {
             Log.d(Constants.PERFORMANCE_TAG, "AccountTypeManager.loadAccountsInBackground start");
         }
@@ -409,16 +421,28 @@ class AccountTypeManagerImpl extends AccountTypeManager
             // adapter, using the authenticator to find general resources.
             final String type = sync.accountType;
             final AuthenticatorDescription auth = findAuthenticator(auths, type);
+            if (DBG) Log.d(TAG, "loadAccountsInBackground(): sync = " + sync + ", sync.authority = " + sync.authority + ", type = " + type + ", auth = " + auth);
             if (auth == null) {
                 Log.w(TAG, "No authenticator found for type=" + type + ", ignoring it.");
                 continue;
             }
 
             AccountType accountType;
+            AccountType accountType2;
+            accountType2 = null;
             if (GoogleAccountType.ACCOUNT_TYPE.equals(type)) {
                 accountType = new GoogleAccountType(mContext, auth.packageName);
             } else if (ExchangeAccountType.isExchangeType(type)) {
                 accountType = new ExchangeAccountType(mContext, auth.packageName, type);
+            } else if (LocalAccountType.ACCOUNT_TYPE.equals(type)) {
+                if (DBG) Log.d(TAG, "loadAccountsInBackground(): LocalAccountType");
+                accountType = new LocalAccountType(mContext, auth.packageName);
+            } else if (SimAccountType.ACCOUNT_TYPE.equals(type)) {
+                if (DBG) Log.d(TAG, "loadAccountsInBackground(): SimAccountType");
+                accountType = new SimAccountType(mContext, auth.packageName, BrcmIccUtils.ACCOUNT_NAME_SIM1);
+                 if(SystemProperties.getInt("ro.dual.sim.phone", 0) == 1) {
+                    accountType2 = new SimAccountType(mContext, auth.packageName, BrcmIccUtils.ACCOUNT_NAME_SIM2);
+                }
             } else {
                 // TODO: use syncadapter package instead, since it provides resources
                 Log.d(TAG, "Registering external account type=" + type
@@ -444,6 +468,17 @@ class AccountTypeManagerImpl extends AccountTypeManager
             // Check to see if the account type knows of any other non-sync-adapter packages
             // that may provide other data sets of contact data.
             extensionPackages.addAll(accountType.getExtensionPackageNames());
+            if (null != accountType2) {
+                accountType2.accountType = auth.type;
+                accountType2.titleRes = auth.labelId;
+                accountType2.iconRes = auth.iconId;
+
+                addAccountType(accountType2, accountTypesByTypeAndDataSet, accountTypesByType);
+
+                // Check to see if the account type knows of any other non-sync-adapter packages
+                // that may provide other data sets of contact data.
+                extensionPackages.addAll(accountType2.getExtensionPackageNames());
+            }
         }
 
         // If any extension packages were specified, process them as well.
@@ -478,6 +513,7 @@ class AccountTypeManagerImpl extends AccountTypeManager
 
         // Map in accounts to associate the account names with each account type entry.
         Account[] accounts = mAccountManager.getAccounts();
+        boolean simContactsLoaded = true;
         for (Account account : accounts) {
             boolean syncable =
                 ContentResolver.getIsSyncable(account, ContactsContract.AUTHORITY) > 0;
@@ -490,6 +526,42 @@ class AccountTypeManagerImpl extends AccountTypeManager
                     for (AccountType accountType : accountTypes) {
                         AccountWithDataSet accountWithDataSet = new AccountWithDataSet(
                                 account.name, account.type, accountType.dataSet);
+                        if (BrcmIccUtils.ACCOUNT_TYPE_SIM.equals(account.type)) {
+                            if (DBG) Log.d(TAG, "loadAccountsInBackground(): account.name = " + account.name + ", account.type = " + account.type + ", accountType.dataSet = " + accountType.dataSet);
+                            if (!account.name.equals(accountType.dataSet)) {
+                                if (DBG) Log.d(TAG, "loadAccountsInBackground(): SimAccountTeyp: account.name != accountType.dataSet");
+                                continue;
+                            }
+
+                            SimAccountType simAccountType = (SimAccountType) accountType;
+                            int simId;
+                            if (BrcmIccUtils.ACCOUNT_NAME_SIM2.equals(account.name)) {
+                                simId = SimCardID.ID_ONE.toInt();
+                            } else {
+                                simId = SimCardID.ID_ZERO.toInt();
+                            }
+
+                            if (DBG) Log.d(TAG, "loadAccountsInBackground(): sim capability = " + mSimReadyHelper);
+
+                            try {
+                                if (mSimReadyHelper.isSimCapabilityInfoReady(simId)) {
+                                    simAccountType.addDataKindPhone(mContext, mSimReadyHelper.supportAnr(simId));
+
+                                    if (mSimReadyHelper.supportEmail(simId)) {
+                                        simAccountType.addDataKindEmail(mContext);
+                                    }
+
+                                    if (mSimReadyHelper.supportGroup(simId)) {
+                                        simAccountType.addDataKindGroupMembership(mContext);
+                                    }
+                                } else {
+                                    if (DBG) Log.d(TAG, "loadAccountsInBackground(): " + account.name + " created but contacts not loaded");
+                                    simContactsLoaded = false;
+                                }
+                           } catch (Exception e) {
+                               Log.e(TAG, "loadAccountsInBackground(): Problem building account type", e);
+                           }
+                        }
                         allAccounts.add(accountWithDataSet);
                         if (accountType.areContactsWritable()) {
                             contactWritableAccounts.add(accountWithDataSet);
@@ -500,6 +572,11 @@ class AccountTypeManagerImpl extends AccountTypeManager
                     }
                 }
             }
+        }
+
+        if (!simContactsLoaded) {
+            if (DBG) Log.d(TAG, "loadAccountsInBackground(): load accounts later because SIM not ready");
+            mListenerHandler.sendEmptyMessageDelayed(MESSAGE_LOAD_DATA, 3000);
         }
 
         Collections.sort(allAccounts, ACCOUNT_COMPARATOR);
@@ -536,6 +613,7 @@ class AccountTypeManagerImpl extends AccountTypeManager
         // Check filter validity since filter may become obsolete after account update. It must be
         // done from UI thread.
         mMainThreadHandler.post(mCheckFilterValidityRunnable);
+        if (DBG) Log.d(TAG, "loadAccountsInBackground()=>");
     }
 
     // Bookkeeping method for tracking the known account types in the given maps.

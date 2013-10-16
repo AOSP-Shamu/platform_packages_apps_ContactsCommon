@@ -38,6 +38,8 @@ import com.android.contacts.common.vcard.ImportVCardActivity;
 
 import java.util.List;
 
+import com.android.internal.telephony.RILConstants.SimCardID;
+
 /**
  * Utility class for selectiong an Account for importing contact(s)
  */
@@ -152,8 +154,13 @@ public class AccountSelectionUtil {
 
     public static void doImport(Context context, int resId, AccountWithDataSet account) {
         switch (resId) {
-            case R.string.import_from_sim: {
-                doImportFromSim(context, account);
+            case R.string.import_from_sim:
+            case R.string.import_from_sim1: {
+                doImportFromSim(context, account, 1);
+                break;
+            }
+            case R.string.import_from_sim2: {
+                doImportFromSim(context, account, 2);
                 break;
             }
             case R.string.import_from_sdcard: {
@@ -171,6 +178,19 @@ public class AccountSelectionUtil {
             importIntent.putExtra("account_type", account.type);
             importIntent.putExtra("data_set", account.dataSet);
         }
+        importIntent.setClassName("com.android.phone", "com.android.phone.SimContacts");
+        context.startActivity(importIntent);
+    }
+
+    public static void doImportFromSim(Context context, AccountWithDataSet account, int phoneId) {
+        Intent importIntent = new Intent(Intent.ACTION_VIEW);
+        importIntent.setType("vnd.android.cursor.item/sim-contact");
+        if (account != null) {
+            importIntent.putExtra("account_name", account.name);
+            importIntent.putExtra("account_type", account.type);
+            importIntent.putExtra("data_set", account.dataSet);
+        }
+        importIntent.putExtra("simId", (phoneId == 2)?SimCardID.ID_ONE:SimCardID.ID_ZERO);
         importIntent.setClassName("com.android.phone", "com.android.phone.SimContacts");
         context.startActivity(importIntent);
     }

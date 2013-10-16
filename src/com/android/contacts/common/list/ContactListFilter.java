@@ -35,6 +35,8 @@ public final class ContactListFilter implements Comparable<ContactListFilter>, P
     public static final int FILTER_TYPE_STARRED = -4;
     public static final int FILTER_TYPE_WITH_PHONE_NUMBERS_ONLY = -5;
     public static final int FILTER_TYPE_SINGLE_CONTACT = -6;
+    public static final int FILTER_TYPE_SIM_CONTACTS = -7;
+    public static final int FILTER_TYPE_NOT_SIM_CONTACTS = -8;
 
     public static final int FILTER_TYPE_ACCOUNT = 0;
 
@@ -102,6 +104,10 @@ public final class ContactListFilter implements Comparable<ContactListFilter>, P
             case FILTER_TYPE_ACCOUNT:
                 return "account: " + accountType + (dataSet != null ? "/" + dataSet : "")
                         + " " + accountName;
+            case FILTER_TYPE_SIM_CONTACTS:
+                return "sim_contacts";
+            case FILTER_TYPE_NOT_SIM_CONTACTS:
+                return "not_sim_contacts";
         }
         return super.toString();
     }

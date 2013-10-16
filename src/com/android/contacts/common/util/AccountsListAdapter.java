@@ -33,6 +33,8 @@ import com.android.contacts.common.model.account.AccountWithDataSet;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.android.contacts.common.BrcmIccUtils;
+
 /**
  * List-Adapter for Account selection
  */
@@ -48,7 +50,9 @@ public final class AccountsListAdapter extends BaseAdapter {
     public enum AccountListFilter {
         ALL_ACCOUNTS,                   // All read-only and writable accounts
         ACCOUNTS_CONTACT_WRITABLE,      // Only where the account type is contact writable
-        ACCOUNTS_GROUP_WRITABLE         // Only accounts where the account type is group writable
+        ACCOUNTS_GROUP_WRITABLE,         // Only accounts where the account type is group writable
+        ACCOUNTS_CONTACT_WRITABLE_AND_LOCAL, // the account type is contact writable + local phonebook
+        ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM // the account type is contact writable but not SIM accounts
     }
 
     public AccountsListAdapter(Context context, AccountListFilter accountListFilter) {
@@ -66,6 +70,7 @@ public final class AccountsListAdapter extends BaseAdapter {
         mAccounts = getAccounts(accountListFilter);
         if (currentAccount != null
                 && !mAccounts.isEmpty()
+                && null != mAccounts.get(0)
                 && !mAccounts.get(0).equals(currentAccount)
                 && mAccounts.remove(currentAccount)) {
             mAccounts.add(0, currentAccount);
@@ -77,6 +82,20 @@ public final class AccountsListAdapter extends BaseAdapter {
         if (accountListFilter == AccountListFilter.ACCOUNTS_GROUP_WRITABLE) {
             return new ArrayList<AccountWithDataSet>(mAccountTypes.getGroupWritableAccounts());
         }
+
+        if (accountListFilter == AccountListFilter.ACCOUNTS_CONTACT_WRITABLE_WITHOUT_SIM) {
+            List<AccountWithDataSet> allWritable = new ArrayList<AccountWithDataSet>(mAccountTypes.getAccounts(true));
+            allWritable.remove(new AccountWithDataSet(
+                    BrcmIccUtils.ACCOUNT_NAME_SIM1, BrcmIccUtils.ACCOUNT_TYPE_SIM, BrcmIccUtils.ACCOUNT_NAME_SIM1));
+            allWritable.remove(new AccountWithDataSet(
+                    BrcmIccUtils.ACCOUNT_NAME_SIM2, BrcmIccUtils.ACCOUNT_TYPE_SIM, BrcmIccUtils.ACCOUNT_NAME_SIM2));
+            return allWritable;
+        } else if (accountListFilter == AccountListFilter.ACCOUNTS_CONTACT_WRITABLE_AND_LOCAL) {
+            List<AccountWithDataSet> allWritable = new ArrayList<AccountWithDataSet>(mAccountTypes.getAccounts(true));
+            allWritable.add(null);
+            return allWritable;
+        }
+
         return new ArrayList<AccountWithDataSet>(mAccountTypes.getAccounts(
                 accountListFilter == AccountListFilter.ACCOUNTS_CONTACT_WRITABLE));
     }
@@ -91,6 +110,13 @@ public final class AccountsListAdapter extends BaseAdapter {
         final ImageView icon = (ImageView) resultView.findViewById(android.R.id.icon);
 
         final AccountWithDataSet account = mAccounts.get(position);
+        if (null == account) {
+            text1.setText(R.string.local_phonebook_account_type_label);
+
+            text2.setVisibility(View.GONE);
+            icon.setImageDrawable(mContext.getResources().getDrawable(R.drawable.ic_local_contact_picture));
+            return resultView;
+        }
         final AccountType accountType = mAccountTypes.getAccountType(account.type, account.dataSet);
 
         text1.setText(accountType.getDisplayLabel(mContext));
