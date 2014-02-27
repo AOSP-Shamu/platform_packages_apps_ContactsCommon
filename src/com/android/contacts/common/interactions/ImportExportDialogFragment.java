@@ -27,6 +27,8 @@ import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.telephony.SubscriptionManager;
+import android.telephony.SubInfoRecord;
 import android.provider.ContactsContract.Contacts;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -38,6 +40,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.android.contacts.common.R;
+import com.android.contacts.common.dialog.SelectSimDialog;
 import com.android.contacts.common.editor.SelectAccountDialogFragment;
 import com.android.contacts.common.model.AccountTypeManager;
 import com.android.contacts.common.model.account.AccountWithDataSet;
@@ -97,8 +100,8 @@ public class ImportExportDialogFragment extends DialogFragment
             }
         };
 
-        if (TelephonyManager.getDefault().hasIccCard()
-                && res.getBoolean(R.bool.config_allow_sim_import)) {
+        boolean hasCardInserted = SubscriptionManager.getActivatedSubInfoList(getActivity()) != null ? true : false;
+        if (hasCardInserted && res.getBoolean(R.bool.config_allow_sim_import)) {
             adapter.add(R.string.import_from_sim);
         }
         if (res.getBoolean(R.bool.config_allow_import_from_sdcard)) {
@@ -123,6 +126,8 @@ public class ImportExportDialogFragment extends DialogFragment
                 final int resId = adapter.getItem(which);
                 switch (resId) {
                     case R.string.import_from_sim:
+                        dismissDialog = handleImportSim(resId);
+                        break;
                     case R.string.import_from_sdcard: {
                         dismissDialog = handleImportRequest(resId);
                         break;
@@ -159,6 +164,18 @@ public class ImportExportDialogFragment extends DialogFragment
                 .create();
     }
 
+    private boolean handleImportSim(int resId) {
+        TelephonyManager telMgr = (TelephonyManager) getActivity().getSystemService(Context.TELEPHONY_SERVICE);
+        int simCount = telMgr.getSimCount();
+        if (simCount == 1) {
+            List<SubInfoRecord> list = SubscriptionManager.getActivatedSubInfoList(getActivity());
+            AccountSelectionUtil.doImportFromSim(getActivity(), null, list.get(0).mSubId);
+        } else {
+            SelectSimDialog.show(getFragmentManager());
+        } 
+        return true;
+    }
+    
     private void doShareVisibleContacts() {
         // TODO move the query into a loader and do this in a background thread
         final Cursor cursor = getActivity().getContentResolver().query(Contacts.CONTENT_URI,
