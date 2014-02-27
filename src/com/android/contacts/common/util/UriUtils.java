@@ -52,4 +52,13 @@ public class UriUtils {
     public static boolean isEncodedContactUri(Uri uri) {
         return uri != null && uri.getLastPathSegment().equals(Constants.LOOKUP_URI_ENCODED);
     }
+
+    /**
+     * 
+     * @param subId
+     * @return The IccUri by subId
+     */
+    public static Uri getIccUri(long subId) {
+        return Uri.parse("content://icc/adn" + subId);
+    }
 }
