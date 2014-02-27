@@ -35,6 +35,7 @@ import com.android.contacts.common.model.AccountTypeManager;
 import com.android.contacts.common.model.account.AccountType;
 import com.android.contacts.common.model.account.AccountWithDataSet;
 import com.android.contacts.common.vcard.ImportVCardActivity;
+import com.android.internal.telephony.PhoneConstants;
 
 import java.util.List;
 
@@ -152,10 +153,6 @@ public class AccountSelectionUtil {
 
     public static void doImport(Context context, int resId, AccountWithDataSet account) {
         switch (resId) {
-            case R.string.import_from_sim: {
-                doImportFromSim(context, account);
-                break;
-            }
             case R.string.import_from_sdcard: {
                 doImportFromSdCard(context, account);
                 break;
@@ -163,8 +160,9 @@ public class AccountSelectionUtil {
         }
     }
 
-    public static void doImportFromSim(Context context, AccountWithDataSet account) {
+    public static void doImportFromSim(Context context, AccountWithDataSet account,long subId) {
         Intent importIntent = new Intent(Intent.ACTION_VIEW);
+        importIntent.putExtra(PhoneConstants.SUB_ID_KEY, subId);
         importIntent.setType("vnd.android.cursor.item/sim-contact");
         if (account != null) {
             importIntent.putExtra("account_name", account.name);
